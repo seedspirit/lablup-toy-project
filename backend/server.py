@@ -1,33 +1,21 @@
+import aiohttp
 from aiohttp import web
-from aiohttp.web import json_response 
+from aiohttp.web import json_response, WebSocketResponse
 import redis
 import json
 import pickle
+import asyncio
+import logging
+
+from redis.client import PubSub
 
 routes = web.RouteTableDef()
 redis_client = redis.Redis()
+redis_pubsub_client = redis_client.pubsub()
 
 @routes.get('/')
 async def index(request):
-    return json_response({"data": "hello world"})
-
-@routes.post('/redis')
-async def post_redis(request):
-    data = await request.json()
-    redis_key = data["key"]
-    redis_val = data["value"]
-    redis_client.set(redis_key, redis_val)
-    return json_response({"data": f"key:{redis_key}, value:{redis_val} stored successfully"})
-
-@routes.get('/redis')
-async def get_redis(request):
-    key: str = request.rel_url.query.get('key')
-    if key is None:
-        return json_response({"error": "Query Paramerer 'key' is needed"}, status=400)
-    val = redis_client.get(key)
-    if val is None:
-        return json_response({"error": f"Data of {key} is not found"}, status=404)
-    return json_response({"data":val}) 
+    return json_response({"message": "hello this is chat app"}) 
 
 @routes.post('/rooms')
 async def create_chat_room(request):
@@ -65,10 +53,69 @@ async def send_chat(request):
 async def get_chat(request):
     room_id = request.match_info['room_id']
     room_key = "room:" + room_id
-    messages: list[dict[str, str]] = redis_client.zrange(name=room_key, start=0, end=-1)
+    messages = await redis_client.zrange(name=room_key, start=0, end=-1)
     decoded_message = [pickle.loads(message) for message in messages]
     return json_response({"data": decoded_message})
 
+
+CHANNEL = "one"
+async def handle_redis_messages(websocket: WebSocketResponse, pubsub: PubSub):
+        while not websocket.closed:
+            message = pubsub.get_message()
+            if message and message["type"] == "message":
+                try:
+                    await websocket.send_json(pickle.loads(message["data"]))
+                except:
+                    break
+            await asyncio.sleep(0.01)
+
+@routes.get('/ws')
+async def websocket_connect(request):
+    ws = WebSocketResponse()
+    await ws.prepare(request)
+    pubsub = None
+
+    try:
+        pubsub = redis_client.pubsub()
+        pubsub.subscribe(CHANNEL)
+        
+        # Redis 구독 처리를 위한 별도 태스크 생성
+        asyncio.create_task(handle_redis_messages(ws, pubsub))
+        
+        # WebSocket 메시지 처리
+        while True:
+            try:
+                msg = await ws.receive()
+                
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    if msg.data == 'close':
+                        await ws.close()
+                        break
+                        
+                    data = json.loads(msg.data)
+                    chat = {
+                        "from": data["user_id"],
+                        "date": data["timestamp"],
+                        "message": data["message"],
+                    }
+                    redis_client.publish(CHANNEL, pickle.dumps(chat))
+                    
+                elif msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING):
+                    break
+                    
+            except Exception as e:
+                logging.error(f"Error in WebSocket loop: {e}", exc_info=True)
+                break
+                
+    except Exception as e:
+        logging.error(f"WebSocket connection error: {e}", exc_info=True)
+    finally:
+        if pubsub:
+            pubsub.unsubscribe(CHANNEL)
+            pubsub.close()
+        await ws.close()
+        
+    return ws
 
 # Infra Layer
 def init_redis():
