@@ -4,7 +4,6 @@ from aiohttp import web
 from aiohttp.web import json_response, WebSocketResponse, Request, Response, FileResponse
 
 import aiohttp_session
-import aiohttp_session.redis_storage as redis_storage
 from aiohttp_session.redis_storage import RedisStorage
 from aiohttp_session import Session
 
@@ -22,53 +21,16 @@ from pathlib import Path
 routes = web.RouteTableDef()
 redis_client = redis.Redis()
 redis_pubsub_client = redis_client.pubsub()
-session_storage = redis_storage.RedisStorage(aioredis.Redis())
+
+COOKIE_NAME = "aiohttp_chat_app_session_id"
+ONE_HOUR = 60 * 60
+session_storage = RedisStorage(aioredis.Redis(), cookie_name=COOKIE_NAME, max_age=ONE_HOUR)
 
 INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / 'frontend' / 'view.html'
 
 @routes.get('/')
 async def index(request: Request) -> FileResponse:
     return FileResponse(INDEX_HTML_PATH)
-
-@routes.post('/rooms')
-async def create_chat_room(request) -> Response:
-    data = await request.json()
-    user1_id = data["user1_id"]
-    user2_id = data["user2_id"]
-    room_key: str = f"room:{user1_id}:{user2_id}"
-    if redis_client.sismember(name=f"user:{user1_id}:rooms", value=room_key): 
-        return json_response({"error": f"room for {user1_id}, {user2_id} already exists"}, status=400)
-    
-    redis_client.sadd(f"user:{user1_id}:rooms", room_key)
-    redis_client.sadd(f"user:{user2_id}:rooms", room_key)
-
-    return json_response({"id": f"{user1_id}:{user2_id}"})
-
-# TODO: 채팅방에 참여한 유저가 아닌데 메시지를 보내는 경우 에러처리
-@routes.post('/rooms/{room_id}/chat')
-async def send_chat(request: Request) -> Response:
-    room_id = request.match_info['room_id']
-    room_key = "room:" + room_id  
-    data = await request.json()
-    user_id = data["user_id"]
-    message = data["message"]
-    timestamp = data["timestamp"]
-    chat = {
-        "from": user_id,
-        "date": timestamp,
-        "message": message,
-        "room_id": room_id
-    }
-    redis_client.zadd(name=room_key, mapping={pickle.dumps(chat): int(timestamp)})
-    return json_response(chat)
-
-@routes.get('/rooms/{room_id}/chat')
-async def get_chat(request: Request) -> Response:
-    room_id = request.match_info['room_id']
-    room_key = "room:" + room_id
-    messages = await redis_client.zrange(name=room_key, start=0, end=-1)
-    decoded_message = [pickle.loads(message) for message in messages]
-    return json_response({"data": decoded_message})
 
 @routes.get('/session')
 async def get_session(request: Request) -> Response:
@@ -80,7 +42,7 @@ async def get_session(request: Request) -> Response:
         session['session_id'] = session_id
         session.changed()
         
-    response = json_response({"sessionId": session_id})
+    response: Response = json_response({"sessionId": session_id})
     await session_storage.save_session(request=request, response=response, session=session)
     return response
 
@@ -90,7 +52,7 @@ PUBSUB_FIELD_TYPE = "type"
 PUBSUB_FIELD_DATA = "data"
 PUBSUB_TYPE_MESSAGE = "message"
 
-async def receive_chat_messages(websocket: WebSocketResponse, pubsub: PubSub) -> None:
+async def receive_chat_message(websocket: WebSocketResponse, pubsub: PubSub) -> None:
     while not websocket.closed:
         message = pubsub.get_message()
         if message and message[PUBSUB_FIELD_TYPE] == PUBSUB_TYPE_MESSAGE:
@@ -129,7 +91,7 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
         try:
             pubsub.subscribe(CHANNEL)
             
-            receive_task: asyncio.Task = asyncio.create_task(receive_chat_messages(websocket=ws, pubsub=pubsub))
+            receive_task: asyncio.Task = asyncio.create_task(receive_chat_message(websocket=ws, pubsub=pubsub))
             publish_task: asyncio.Task = asyncio.create_task(publish_chat_message(websocket=ws))
 
             # 두 태스크 모두 ws이 close되거나 에러가 발생할 때까지 무한 루프로 실행된다
