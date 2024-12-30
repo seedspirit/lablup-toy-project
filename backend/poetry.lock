@@ -109,6 +109,27 @@ yarl = ">=1.17.0,<2.0"
 speedups = ["Brotli", "aiodns (>=3.2.0)", "brotlicffi"]
 
 [[package]]
+name = "aiohttp-session"
+version = "2.12.1"
+description = "sessions for aiohttp.web"
+optional = false
+python-versions = "*"
+files = [
+    {file = "aiohttp_session-2.12.1-py3-none-any.whl", hash = "sha256:654df46c3c9b73294312795f558c3bca4a85bfd3b01a8b744d984ae3958dce5f"},
+    {file = "aiohttp_session-2.12.1.tar.gz", hash = "sha256:15e6e0288e9bcccd4b1d0c28aae9c20e19a252b12d0cb682223ca9c83180e899"},
+]
+
+[package.dependencies]
+aiohttp = ">=3.10"
+
+[package.extras]
+aiomcache = ["aiomcache (>=0.5.2)"]
+aioredis = ["redis (>=4.3.1)"]
+pycrypto = ["cryptography"]
+pynacl = ["pynacl"]
+secure = ["cryptography"]
+
+[[package]]
 name = "aiosignal"
 version = "1.3.2"
 description = "aiosignal: a list of registered asynchronous callbacks"
@@ -576,4 +597,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "fdcc3bcaed37444218a49a57c5f62ed9e5495a62a63cbd8d1fba532859d83ed7"
+content-hash = "3aacef277223da019671e4620867553f328134b84ed55c90ff3a43934f932e3a"

@@ -41,7 +41,7 @@
     <h1>WebSocket 채팅 테스트</h1>
     <div>
         <label for="userId">사용자 ID:</label>
-        <input type="text" id="userId" value="user1">
+        <span id="userId"></span>
     </div>
     <div id="messageArea"></div>
     <form id="messageForm">
@@ -51,10 +51,36 @@
 
     <script>
         let ws;
+        let currentSessionId;
+
         const messageArea = document.getElementById('messageArea');
         const messageForm = document.getElementById('messageForm');
         const messageInput = document.getElementById('messageInput');
         const userIdInput = document.getElementById('userId');
+        const userIdSpan = document.getElementById('userId');
+
+        async function getSessionId() {
+            try {
+                const response = await fetch('/session');  
+                const data = await response.json();
+                currentSessionId = data.sessionId;
+                userIdSpan.textContent = data.sessionId.split('-')[0];
+                return data.sessionId;
+            } catch (error) {
+                addMessage('세션 ID 가져오기 실패: ' + error.message, 'status');
+                return null;
+            }
+        }
+
+        async function initializeChat() {
+            const sessionId = await getSessionId();
+            if (sessionId) {
+                connect();
+            }
+        }
+
+        // 페이지 로드 시 초기화 함수 호출
+        document.addEventListener('DOMContentLoaded', initializeChat);
 
         function connect() {
             ws = new WebSocket('ws://localhost:8080/ws');
@@ -74,7 +100,8 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                addMessage(`${data.from}: ${data.message}`);
+                const displayId = data.from.split('-')[0]; 
+                addMessage(`${displayId}: ${data.message}`);
             };
         }
 
@@ -92,7 +119,7 @@
             if (!messageInput.value.trim()) return;
 
             const message = {
-                user_id: userIdInput.value,
+                user_id: currentSessionId,
                 timestamp: new Date().toISOString(),
                 message: messageInput.value
             };
@@ -104,9 +131,6 @@
                 addMessage('메시지 전송 실패: ' + error.message, 'status');
             }
         });
-
-        // 페이지 로드 시 WebSocket 연결
-        connect();
 
         // 페이지 언로드 시 WebSocket 연결 종료
         window.addEventListener('beforeunload', () => {

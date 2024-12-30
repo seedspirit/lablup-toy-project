@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.11"
 aiohttp = "^3.11.11"
 redis = "^5.2.1"
+aiohttp-session = "^2.12.1"
 
 
 [build-system]

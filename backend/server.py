@@ -1,18 +1,28 @@
+import uuid
 import aiohttp
 from aiohttp import web
 from aiohttp.web import json_response, WebSocketResponse, Request, Response, FileResponse
+
+import aiohttp_session
+import aiohttp_session.redis_storage as redis_storage
+from aiohttp_session.redis_storage import RedisStorage
+from aiohttp_session import Session
+
 import redis
+from redis.client import PubSub
+from redis import asyncio as aioredis
+
 import json
 import pickle
 import asyncio
 import logging
 from pathlib import Path
 
-from redis.client import PubSub
 
 routes = web.RouteTableDef()
 redis_client = redis.Redis()
 redis_pubsub_client = redis_client.pubsub()
+session_storage = redis_storage.RedisStorage(aioredis.Redis())
 
 INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / 'frontend' / 'view.html'
 
@@ -60,6 +70,19 @@ async def get_chat(request: Request) -> Response:
     decoded_message = [pickle.loads(message) for message in messages]
     return json_response({"data": decoded_message})
 
+@routes.get('/session')
+async def get_session(request: Request) -> Response:
+    session: Session = await aiohttp_session.get_session(request=request)
+    session_id = session.get('session_id')
+    
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        session['session_id'] = session_id
+        session.changed()
+        
+    response = json_response({"sessionId": session_id})
+    await session_storage.save_session(request=request, response=response, session=session)
+    return response
 
 CHANNEL = "one"
 
@@ -134,7 +157,7 @@ def init_redis():
 
 app = web.Application()
 app.router.add_routes(routes=routes)
-
+aiohttp_session.setup(app, session_storage)
 
 if __name__ == '__main__':
     init_redis()
