@@ -1,11 +1,12 @@
 import aiohttp
 from aiohttp import web
-from aiohttp.web import json_response, WebSocketResponse, Request, Response
+from aiohttp.web import json_response, WebSocketResponse, Request, Response, FileResponse
 import redis
 import json
 import pickle
 import asyncio
 import logging
+from pathlib import Path
 
 from redis.client import PubSub
 
@@ -13,9 +14,11 @@ routes = web.RouteTableDef()
 redis_client = redis.Redis()
 redis_pubsub_client = redis_client.pubsub()
 
+INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / 'frontend' / 'view.html'
+
 @routes.get('/')
-async def index(request: Request) -> Response:
-    return json_response({"message": "hello this is chat app"}) 
+async def index(request: Request) -> FileResponse:
+    return FileResponse(INDEX_HTML_PATH)
 
 @routes.post('/rooms')
 async def create_chat_room(request) -> Response:
