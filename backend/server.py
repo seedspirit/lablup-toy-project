@@ -1,6 +1,6 @@
 import aiohttp
 from aiohttp import web
-from aiohttp.web import json_response, WebSocketResponse
+from aiohttp.web import json_response, WebSocketResponse, Request, Response
 import redis
 import json
 import pickle
@@ -14,11 +14,11 @@ redis_client = redis.Redis()
 redis_pubsub_client = redis_client.pubsub()
 
 @routes.get('/')
-async def index(request):
+async def index(request: Request) -> Response:
     return json_response({"message": "hello this is chat app"}) 
 
 @routes.post('/rooms')
-async def create_chat_room(request):
+async def create_chat_room(request) -> Response:
     data = await request.json()
     user1_id = data["user1_id"]
     user2_id = data["user2_id"]
@@ -33,7 +33,7 @@ async def create_chat_room(request):
 
 # TODO: 채팅방에 참여한 유저가 아닌데 메시지를 보내는 경우 에러처리
 @routes.post('/rooms/{room_id}/chat')
-async def send_chat(request):
+async def send_chat(request: Request) -> Response:
     room_id = request.match_info['room_id']
     room_key = "room:" + room_id  
     data = await request.json()
@@ -50,7 +50,7 @@ async def send_chat(request):
     return json_response(chat)
 
 @routes.get('/rooms/{room_id}/chat')
-async def get_chat(request):
+async def get_chat(request: Request) -> Response:
     room_id = request.match_info['room_id']
     room_key = "room:" + room_id
     messages = await redis_client.zrange(name=room_key, start=0, end=-1)
@@ -59,62 +59,70 @@ async def get_chat(request):
 
 
 CHANNEL = "one"
-async def handle_redis_messages(websocket: WebSocketResponse, pubsub: PubSub):
-        while not websocket.closed:
-            message = pubsub.get_message()
-            if message and message["type"] == "message":
-                try:
-                    await websocket.send_json(pickle.loads(message["data"]))
-                except:
-                    break
-            await asyncio.sleep(0.01)
+
+PUBSUB_FIELD_TYPE = "type"
+PUBSUB_FIELD_DATA = "data"
+PUBSUB_TYPE_MESSAGE = "message"
+
+async def receive_chat_messages(websocket: WebSocketResponse, pubsub: PubSub) -> None:
+    while not websocket.closed:
+        message = pubsub.get_message()
+        if message and message[PUBSUB_FIELD_TYPE] == PUBSUB_TYPE_MESSAGE:
+            try:
+                await websocket.send_json(pickle.loads(message[PUBSUB_FIELD_DATA]))
+            except:
+                break
+        await asyncio.sleep(0.01)
+
+async def publish_chat_message(websocket: WebSocketResponse) -> None:
+    while not websocket.closed:
+        try:   
+            msg = await websocket.receive() 
+
+            if msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING):
+                break
+
+            data = json.loads(msg.data)
+            chat = {
+                "from": data["user_id"],
+                "date": data["timestamp"],
+                "message": data["message"],
+            }
+            redis_client.publish(CHANNEL, pickle.dumps(chat))
+
+        except Exception as e:
+            logging.error(f"Error in WebSocket loop: {e}", exc_info=True)
+            break
 
 @routes.get('/ws')
-async def websocket_connect(request):
-    ws = WebSocketResponse()
+async def websocket_connect(request: Request) -> WebSocketResponse:
+    ws: WebSocketResponse = WebSocketResponse()
     await ws.prepare(request)
-    pubsub = None
+    
+    with redis_client.pubsub() as pubsub:
+        try:
+            pubsub.subscribe(CHANNEL)
+            
+            receive_task: asyncio.Task = asyncio.create_task(receive_chat_messages(websocket=ws, pubsub=pubsub))
+            publish_task: asyncio.Task = asyncio.create_task(publish_chat_message(websocket=ws))
 
-    try:
-        pubsub = redis_client.pubsub()
-        pubsub.subscribe(CHANNEL)
+            # 두 태스크 모두 ws이 close되거나 에러가 발생할 때까지 무한 루프로 실행된다
+            done, pending = await asyncio.wait(
+                [receive_task, publish_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # 둘 중 하나가 에러 혹은 ws close로 완료되면 나머지 태스크도 정리
+            for task in pending:
+                task.cancel()
+
+        except Exception as e:
+            logging.error(f"WebSocket connection error: {e}", exc_info=True)
         
-        # Redis 구독 처리를 위한 별도 태스크 생성
-        asyncio.create_task(handle_redis_messages(ws, pubsub))
-        
-        # WebSocket 메시지 처리
-        while True:
-            try:
-                msg = await ws.receive()
-                
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    if msg.data == 'close':
-                        await ws.close()
-                        break
-                        
-                    data = json.loads(msg.data)
-                    chat = {
-                        "from": data["user_id"],
-                        "date": data["timestamp"],
-                        "message": data["message"],
-                    }
-                    redis_client.publish(CHANNEL, pickle.dumps(chat))
-                    
-                elif msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING):
-                    break
-                    
-            except Exception as e:
-                logging.error(f"Error in WebSocket loop: {e}", exc_info=True)
-                break
-                
-    except Exception as e:
-        logging.error(f"WebSocket connection error: {e}", exc_info=True)
-    finally:
-        if pubsub:
+        finally:
             pubsub.unsubscribe(CHANNEL)
-            pubsub.close()
-        await ws.close()
-        
+            await ws.close()
+            
     return ws
 
 # Infra Layer
