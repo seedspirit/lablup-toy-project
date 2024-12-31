@@ -83,7 +83,7 @@
         document.addEventListener('DOMContentLoaded', initializeChat);
 
         function connect() {
-            ws = new WebSocket('ws://localhost:8080/ws');
+            ws = new WebSocket('ws://localhost/ws');
 
             ws.onopen = () => {
                 addMessage('WebSocket 연결됨', 'status');

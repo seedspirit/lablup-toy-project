@@ -1,3 +1,4 @@
+import os
 from aiohttp_session.redis_storage import RedisStorage
 
 from redis import Redis
@@ -10,8 +11,8 @@ COOKIE_NAME = "aiohttp_chat_app_session_id"
 COOKIE_EXPIRATION_TIME = 60 * 60
 
 # Redis
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
 REDIS_DECODE_RESPONSES = False
 
 class Container:
@@ -29,7 +30,7 @@ class Container:
     
     def _init_redis_storage(self) -> None:
         self.redis_storage = RedisStorage(
-            aioredis.Redis(), 
+            aioredis.Redis().from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}"), 
             cookie_name=COOKIE_NAME,
             max_age=COOKIE_EXPIRATION_TIME
         )

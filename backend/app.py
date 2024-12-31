@@ -11,4 +11,4 @@ if __name__ == '__main__':
     
     aiohttp_session.setup(app=app, storage=container.redis_storage)
     
-    web.run_app(app)
+    web.run_app(app, port=80)
