@@ -1,3 +1,4 @@
+from pathlib import Path
 import asyncio, uuid, logging
 
 from aiohttp import web
@@ -10,17 +11,17 @@ from redis.client import PubSub
 
 from redis_service import RedisService
 
-from config import redis_client, redis_storage
-from config import INDEX_HTML_PATH, CHANNEL_NAME
+from container import container
 
+
+redis_service: RedisService = RedisService(redis_client=container.redis_client)
+session_storage = container.redis_storage
 
 routes = web.RouteTableDef()
-redis_service: RedisService = RedisService(redis_client=redis_client)
-session_storage = redis_storage
 
 @routes.get('/')
 async def index(request: Request) -> FileResponse:
-    return FileResponse(INDEX_HTML_PATH)
+    return FileResponse(Path(__file__).resolve().parent.parent / 'frontend' / 'view.html')
 
 @routes.get('/session')
 async def get_session(request: Request) -> Response:
@@ -42,6 +43,8 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
     await ws.prepare(request)
 
     pubsub: PubSub = redis_service.create_pubsub()
+    CHANNEL_NAME = "chat"
+
     try:
         redis_service.subscribe(channel_name=CHANNEL_NAME, pubsub=pubsub)
         
