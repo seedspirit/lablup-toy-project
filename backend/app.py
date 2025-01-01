@@ -1,13 +1,15 @@
-from aiohttp import web
-
 import aiohttp_session
-from container import container
+import container
 from router import routes
+from aiohttp import web
+from container import Container
 
+if __name__ == '__main__':
+    container = Container()
 
-if __name__ == '__main__':    
     app = web.Application()
     app.add_routes(routes)
+    app['container'] = container
     
     aiohttp_session.setup(app=app, storage=container.redis_storage)
     

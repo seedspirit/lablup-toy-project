@@ -37,5 +37,3 @@ class Container:
     
     def _init_redis_service(self) -> None:
         self.redis_service = RedisService(redis_client=self.redis_client)
-    
-container = Container()

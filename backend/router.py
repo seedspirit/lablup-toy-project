@@ -12,9 +12,9 @@ from redis.client import PubSub
 
 from redis_service import RedisService
 
-from container import container
-
 routes = web.RouteTableDef()
+
+DI_CONTAINER_NAME = 'container'
 
 @routes.get('/')
 async def index(request: Request) -> FileResponse:
@@ -31,7 +31,7 @@ async def get_session(request: Request) -> Response:
         session.changed()
         
     response: Response = json_response({"sessionId": session_id})
-    session_storage: RedisStorage = container.redis_storage
+    session_storage: RedisStorage = request.app[DI_CONTAINER_NAME].redis_storage
     await session_storage.save_session(request=request, response=response, session=session)
 
     return response
@@ -41,7 +41,7 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
     ws: WebSocketResponse = WebSocketResponse()
     await ws.prepare(request)
 
-    redis_service: RedisService = container.redis_service
+    redis_service: RedisService = request.app[DI_CONTAINER_NAME].redis_service
     pubsub: PubSub = redis_service.create_pubsub()
     CHANNEL_NAME = "chat"
 
