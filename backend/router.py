@@ -6,16 +6,13 @@ from aiohttp.web import json_response, WebSocketResponse, Request, Response, Fil
 
 import aiohttp_session
 from aiohttp_session import Session
+from aiohttp_session.redis_storage import RedisStorage
 
 from redis.client import PubSub
 
 from redis_service import RedisService
 
 from container import container
-
-
-redis_service: RedisService = RedisService(redis_client=container.redis_client)
-session_storage = container.redis_storage
 
 routes = web.RouteTableDef()
 
@@ -34,7 +31,9 @@ async def get_session(request: Request) -> Response:
         session.changed()
         
     response: Response = json_response({"sessionId": session_id})
+    session_storage: RedisStorage = container.redis_storage
     await session_storage.save_session(request=request, response=response, session=session)
+
     return response
 
 @routes.get('/ws')
@@ -42,6 +41,7 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
     ws: WebSocketResponse = WebSocketResponse()
     await ws.prepare(request)
 
+    redis_service: RedisService = container.redis_service
     pubsub: PubSub = redis_service.create_pubsub()
     CHANNEL_NAME = "chat"
 
