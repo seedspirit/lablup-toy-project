@@ -28,6 +28,12 @@ docker compose up --build
 APP_MODE=multi-process APP_WORKERS=4 docker compose up --build
 ```
 
+4. You can access app in `localhost` or `127.0.0.1` (using 80 port)
+
+
+![image](./application_image.png)
+
+
 ### Using plain python
 1. Clone repository
 ```shell
@@ -59,3 +65,8 @@ poetry run python main.py --mode thread
 # Run in multi-process mode (set workers according to your CPU cores)
 poetry run python main.py -m multi-process -w 4
 ```
+
+6. You can access app in `localhost` or `127.0.0.1` (using 80 port)
+
+
+![image](./application_image.png)
