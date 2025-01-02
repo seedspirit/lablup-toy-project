@@ -6,11 +6,12 @@ import signal
 import sys, os
 
 from aiohttp import web
-from app import create_app
+from app import ServerApplication
 
 def run_single_app() -> None:
     loop = asyncio.get_event_loop()
-    app = loop.run_until_complete(create_app())
+    server_app = ServerApplication()
+    app = loop.run_until_complete(server_app.create())
     web.run_app(app, port=80, reuse_port=True)
 
 def handle_multiprocess_shutdown(processes, signum, frame) -> None:
@@ -62,7 +63,7 @@ if __name__ == '__main__':
         default_workers = int(default_workers)
 
     parser.add_argument('-m', '--mode', choices=[SINGLE_THREAD_MODE, MULTI_PROCESS_MODE], default=SINGLE_THREAD_MODE)
-    parser.add_argument('-w', '--workers', type=int, default=None)
+    parser.add_argument('-w', '--workers', type=int, default=1)
     args = parser.parse_args()
 
     if args.mode == SINGLE_THREAD_MODE:
