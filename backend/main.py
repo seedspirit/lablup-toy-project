@@ -9,9 +9,8 @@ from aiohttp import web
 from app import ServerApplication
 
 def run_single_app() -> None:
-    loop = asyncio.get_event_loop()
     server_app = ServerApplication()
-    app = loop.run_until_complete(server_app.create())
+    app = asyncio.run(server_app.create()) 
     web.run_app(app, port=80, reuse_port=True)
 
 def handle_multiprocess_shutdown(processes, signum, frame) -> None:
