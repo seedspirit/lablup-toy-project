@@ -29,6 +29,7 @@ APP_MODE=multi-process APP_WORKERS=4 docker compose up --build
 ```
 
 4. You can access app in `localhost` or `127.0.0.1` (using 80 port)
+> Note: Since the application uses session id in cookies for user identification, you can test multi-user chat scenarios by opening Chrome's Incognito window for each additional user.
 
 
 ![image](./application_image.png)
@@ -67,6 +68,7 @@ poetry run python main.py -m multi-process -w 4
 ```
 
 6. You can access app in `localhost` or `127.0.0.1` (using 80 port)
+> Note: Since the application uses session id in cookies for user identification, you can test multi-user chat scenarios by opening Chrome's Incognito window for each additional user.
 
 
 ![image](./application_image.png)
