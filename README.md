@@ -59,12 +59,12 @@ docker run -d --name redis -p 6379:6379 redis
 5. Run application with python3 & poetry
 ```shell
 # Run in single thread mode
-poetry run python main.py
+poetry run python3 main.py
 # or
-poetry run python main.py --mode thread
+poetry run python3 main.py --mode thread
 
 # Run in multi-process mode (set workers according to your CPU cores)
-poetry run python main.py -m multi-process -w 4
+poetry run python3 main.py -m multi-process -w 4
 ```
 
 6. You can access app in `localhost` or `127.0.0.1` (using 80 port)
