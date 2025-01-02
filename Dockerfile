@@ -8,4 +8,4 @@ COPY . /app/
 WORKDIR /app/backend
 RUN poetry install --no-root
 
-ENTRYPOINT ["poetry", "run", "python", "main.py"]
+ENTRYPOINT ["sh", "-c", "poetry run python main.py -m $APP_MODE -w $APP_WORKERS"]

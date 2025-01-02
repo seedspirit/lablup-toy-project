@@ -3,7 +3,7 @@ import logging
 import multiprocessing
 import asyncio
 import signal
-import sys
+import sys, os
 
 from aiohttp import web
 from app import create_app
@@ -56,16 +56,23 @@ if __name__ == '__main__':
     SINGLE_THREAD_MODE = 'thread'
     MULTI_PROCESS_MODE = 'multi-process'
 
+    default_mode = os.getenv("APP_MODE", SINGLE_THREAD_MODE)
+    default_workers = os.getenv("APP_WORKERS", 1)
+    if default_workers:
+        default_workers = int(default_workers)
+
     parser.add_argument('-m', '--mode', choices=[SINGLE_THREAD_MODE, MULTI_PROCESS_MODE], default=SINGLE_THREAD_MODE)
     parser.add_argument('-w', '--workers', type=int, default=None)
     args = parser.parse_args()
 
     if args.mode == SINGLE_THREAD_MODE:
-        if args.workers:
-            raise ValueError("Workers are not supported in single-thread mode")
+        if args.workers > 1:
+            raise ValueError("Cannot set workers more than 1 in single thread mode")
         run_single_app()
 
     elif args.mode == MULTI_PROCESS_MODE:
+        if args.workers <= 1:
+            raise ValueError("Workers must be at least 2 in multi-process mode")
         if args.workers > multiprocessing.cpu_count():
             raise ValueError(f"Maximum workers is {multiprocessing.cpu_count()}")
         run_multiprocess(process_count=args.workers)
