@@ -40,6 +40,7 @@ async def get_session(request: Request) -> Response:
 async def websocket_connect(request: Request) -> WebSocketResponse:
     ws: WebSocketResponse = WebSocketResponse()
     await ws.prepare(request)
+    request.app['active_websockets'].add(ws)
 
     redis_service: RedisService = request.app[DI_CONTAINER_NAME].redis_service
     pubsub: PubSub = redis_service.create_pubsub()
@@ -75,6 +76,8 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
     finally:
         redis_service.unsubscribe(channel_name=CHANNEL_NAME, pubsub=pubsub)
         redis_service.pubsub_close(pubsub=pubsub)
+
+        request.app['active_websockets'].discard(ws)
 
         await ws.close()
             

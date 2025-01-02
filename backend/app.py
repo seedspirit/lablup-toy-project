@@ -1,54 +1,44 @@
+import asyncio
 import aiohttp_session
-import argparse, multiprocessing
+import weakref, logging
 
+from signal import SIGTERM, SIGINT
 from router import routes
-from aiohttp import web
+from aiohttp import WSCloseCode, web
 from container import Container
 
-def create_app() -> web.Application:
+async def create_app() -> web.Application:
     container = Container()
 
     app = web.Application()
     app.add_routes(routes)
+    app.on_shutdown.append(on_shutdown)
+
     app['container'] = container
+    app['active_websockets'] = weakref.WeakSet()
     
     aiohttp_session.setup(app=app, storage=container.redis_storage)
+
+    await register_signal_handler(app)
     
     return app
 
-def run_single_app() -> None:
-    app = create_app()
-    web.run_app(app, port=80, reuse_port=True)
+async def on_shutdown(app: web.Application) -> None:
+    logging.info("Server shutdown...")
 
-def run_multi_process(process_count: int = 2) -> None:
-    processes: list[multiprocessing.Process] = []
-    for _ in range(process_count):
-        process = multiprocessing.Process(target=run_single_app)
-        process.start()
-        processes.append(process)
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    SINGLE_THREAD_MODE = 'thread'
-    MULTI_PROCESS_MODE = 'multi-process'
-
-    parser.add_argument('-m', '--mode', choices=[SINGLE_THREAD_MODE, MULTI_PROCESS_MODE], default=None)
-    parser.add_argument('-w', '--workers', type=int, default=None)
-    args = parser.parse_args()
-
-    if args.mode is None:
-        if args.workers:
-            raise ValueError("Workers only available in multi-process mode")
-        run_single_app()
-
-    elif args.mode == SINGLE_THREAD_MODE:
-        if args.workers:
-            raise ValueError("Single-thread mode does not support workers")
-        run_single_app()
+    # 남아있는 websocker 연결 종료
+    logging.info("Closing active websockets...")
+    ws_close_tasks = [
+        ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown') for ws in app['active_websockets']
+    ]
+    await asyncio.gather(*ws_close_tasks)
     
-    elif args.mode == MULTI_PROCESS_MODE:
-        if args.workers is None:
-            args.workers = 2
-        if args.workers > multiprocessing.cpu_count():
-            raise ValueError(f"Maximum workers is {multiprocessing.cpu_count()}")
-        run_multi_process(process_count=args.workers)
+    # Redis 연결 종료
+    logging.info("Closing Redis connection...")
+    container: Container = app['container']
+    container.redis_client.close()
+
+async def register_signal_handler(app: web.Application) -> None:
+    loop = asyncio.get_event_loop()
+    for signal in (SIGTERM, SIGINT):
+        loop.add_signal_handler(sig=signal, callback=lambda: asyncio.create_task(app.cleanup()))

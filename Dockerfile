@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.11-slim
 
 RUN pip install poetry
 
@@ -8,4 +8,4 @@ COPY . /app/
 WORKDIR /app/backend
 RUN poetry install --no-root
 
-ENTRYPOINT ["poetry", "run", "python", "app.py"]
+ENTRYPOINT ["poetry", "run", "python", "main.py"]
