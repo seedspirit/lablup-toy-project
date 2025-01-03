@@ -7,7 +7,7 @@ from redis.client import PubSub
 from aiohttp.web import WebSocketResponse
 from aiohttp import WSMsgType
 
-from exceptions import MessagePublishException, MessageReceiveException, WebSocketException
+from exceptions import MessagePublishException, MessageReceiveException, WebSocketException, InvalidMessageFormatException
 
 PUBSUB_FIELD_TYPE = "type"
 PUBSUB_FIELD_DATA = "data"
@@ -70,7 +70,7 @@ class RedisService():
             
         except json.JSONDecodeError as e:
             logging.error(f"Invalid JSON format: {e}", exc_info=True)
-            raise WebSocketException("Invalid message format")
+            raise InvalidMessageFormatException("Invalid message format")
 
         except Exception as e:
             logging.error(f"Error receiving WebSocket message: {e}", exc_info=True)
