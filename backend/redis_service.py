@@ -38,7 +38,7 @@ class RedisService():
                     raise MessageReceiveException("Error receiving messages from the server.")
             await asyncio.sleep(0.01)
     
-    async def _recevie_websocket_message(self, websocket: WebSocketResponse) -> dict | None:
+    async def _recevie_websocket_message(self, websocket: WebSocketResponse) -> dict[str, Any] | None:
         try:   
             msg = await websocket.receive() 
 
@@ -73,7 +73,7 @@ class RedisService():
 
             await self._publish_message_to_redis(channel_name=channel_name, message=message)
 
-    async def _publish_message_to_redis(self, channel_name: str, message: dict) -> None:
+    async def _publish_message_to_redis(self, channel_name: str, message: dict[str, Any]) -> None:
         try:
             self.redis_client.publish(channel=channel_name, message=pickle.dumps(message))
         except Exception:
