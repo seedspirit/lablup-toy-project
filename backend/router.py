@@ -2,7 +2,7 @@ from pathlib import Path
 import asyncio, uuid, logging
 
 from aiohttp import web
-from aiohttp.web import json_response, WebSocketResponse, Request, Response, FileResponse
+from aiohttp.web import json_response, WebSocketResponse, Request, Response, FileResponse, HTTPException
 
 import aiohttp_session
 from aiohttp_session import Session
@@ -11,6 +11,8 @@ from aiohttp_session.redis_storage import RedisStorage
 from redis.client import PubSub
 
 from redis_service import RedisService
+
+from exceptions import ChatServiceException, WebSocketException
 
 routes = web.RouteTableDef()
 
@@ -39,7 +41,12 @@ async def get_session(request: Request) -> Response:
 @routes.get('/ws')
 async def websocket_connect(request: Request) -> WebSocketResponse:
     ws: WebSocketResponse = WebSocketResponse()
-    await ws.prepare(request)
+    try:
+        await ws.prepare(request)
+    except HTTPException as e:
+        logging.error(f"WebSocket connection error: {e}", exc_info=True)
+        return ws
+
     request.app['active_websockets'].add(ws)
 
     redis_service: RedisService = request.app[DI_CONTAINER_NAME].redis_service
@@ -68,10 +75,21 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
 
         # 둘 중 하나가 에러 혹은 ws close로 완료되면 나머지 태스크도 정리
         for task in pending:
+            # 태스크 취소 요청 후 기다린다            
             task.cancel()
-
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logging.error(f"Error during task cleanup: {task}", exc_info=True)
+                raise
+    
+    except (ChatServiceException, WebSocketException) as e:
+        await ws.send_json({"error": str(e)})
+    
     except Exception as e:
-        logging.error(f"WebSocket connection error: {e}", exc_info=True)
+        await ws.send_json({"error": "An unexpected server error occurred."})
     
     finally:
         redis_service.unsubscribe(channel_name=CHANNEL_NAME, pubsub=pubsub)

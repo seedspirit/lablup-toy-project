@@ -8,12 +8,11 @@ from aiohttp import WSCloseCode, web
 from container import Container
 
 class ServerApplication:
-    def __init__(self):
+    def __init__(self, container: Container):
         self.app = None
-        self.container = None
+        self.container = container
     
     async def create(self) -> web.Application:
-        self.container = Container()
         self.app = web.Application()
         
         self.app.add_routes(routes)

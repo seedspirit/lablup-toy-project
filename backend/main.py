@@ -7,9 +7,11 @@ import sys, os
 
 from aiohttp import web
 from app import ServerApplication
+from container import Container
 
 def run_single_app() -> None:
-    server_app = ServerApplication()
+    container = Container()
+    server_app = ServerApplication(container=container)
     app = asyncio.run(server_app.create()) 
     web.run_app(app, port=80, reuse_port=True)
 
@@ -20,7 +22,7 @@ def handle_multiprocess_shutdown(processes, signum, frame) -> None:
             process.terminate()
 
     for process in processes:
-        process.join()
+        process.join(timeout=5)
     
     logging.info("All processes terminated.")
     sys.exit(0)
@@ -38,9 +40,14 @@ def run_multiprocess(process_count=2) -> None:
     )
 
     for _ in range(process_count):
-        process = multiprocessing.Process(target=run_single_app)
-        processes.append(process)
-        process.start()
+        try:
+            process = multiprocessing.Process(target=run_single_app)
+            processes.append(process)
+            process.start()
+        except Exception as e:
+            logging.error(f"Failed to start process: {e}")
+            handle_multiprocess_shutdown(processes=processes, signum=None, frame=None)
+            break
 
     for process in processes:
         process.join()
