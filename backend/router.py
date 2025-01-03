@@ -1,5 +1,5 @@
 from pathlib import Path
-import asyncio, uuid, logging
+import uuid, logging
 
 from aiohttp import web
 from aiohttp.web import json_response, WebSocketResponse, Request, Response, FileResponse, HTTPException
@@ -8,11 +8,7 @@ import aiohttp_session
 from aiohttp_session import Session
 from aiohttp_session.redis_storage import RedisStorage
 
-from redis.client import PubSub
-
 from redis_service import RedisService
-
-from exceptions import ChatServiceException, WebSocketException
 
 routes = web.RouteTableDef()
 
@@ -49,54 +45,12 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
 
     request.app['active_websockets'].add(ws)
 
+    # RedisService내에서 무한루프를 돌며 채팅 메시지 pub/sub
     redis_service: RedisService = request.app[DI_CONTAINER_NAME].redis_service
-    pubsub: PubSub = redis_service.create_pubsub()
-    CHANNEL_NAME = "chat"
+    await redis_service.handle_chat_communication(websocket=ws, channel_name="chat")
 
-    try:
-        redis_service.subscribe(channel_name=CHANNEL_NAME, pubsub=pubsub)
-        
-        receive_task: asyncio.Task = asyncio.create_task(
-            redis_service.receive_chat_message(websocket=ws, pubsub=pubsub)
-        )
-
-        publish_task: asyncio.Task = asyncio.create_task(
-            redis_service.publish_chat_message(
-                websocket=ws,
-                channel_name=CHANNEL_NAME
-            )
-        )
-
-        # 두 태스크 모두 ws이 close되거나 에러가 발생할 때까지 무한 루프로 실행된다
-        done, pending = await asyncio.wait(
-            [receive_task, publish_task],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        # 둘 중 하나가 에러 혹은 ws close로 완료되면 나머지 태스크도 정리
-        for task in pending:
-            # 태스크 취소 요청 후 기다린다            
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logging.error(f"Error during task cleanup: {task}", exc_info=True)
-                raise
-    
-    except (ChatServiceException, WebSocketException) as e:
-        await ws.send_json({"error": str(e)})
-    
-    except Exception as e:
-        await ws.send_json({"error": "An unexpected server error occurred."})
-    
-    finally:
-        redis_service.unsubscribe(channel_name=CHANNEL_NAME, pubsub=pubsub)
-        redis_service.pubsub_close(pubsub=pubsub)
-
-        request.app['active_websockets'].discard(ws)
-
-        await ws.close()
+    # 연결 종료 시 active_websockets에서 제거
+    request.app['active_websockets'].discard(ws)
+    await ws.close()
             
     return ws

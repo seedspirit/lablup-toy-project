@@ -7,7 +7,7 @@ from redis.client import PubSub
 from aiohttp.web import WebSocketResponse
 from aiohttp import WSMsgType
 
-from exceptions import MessagePublishException, MessageReceiveException, WebSocketException, InvalidMessageFormatException
+from exceptions import *
 
 PUBSUB_FIELD_TYPE = "type"
 PUBSUB_FIELD_DATA = "data"
@@ -18,16 +18,13 @@ class RedisService():
     def __init__(self, redis_client: Redis):
         self.redis_client = redis_client
 
-    def create_pubsub(self) -> PubSub:
-        return self.redis_client.pubsub()
-    
-    def subscribe(self, channel_name: str, pubsub: PubSub) -> None:
+    def _create_subscribed_pubsub(self, channel_name: str) -> PubSub:
+        pubsub: PubSub = self.redis_client.pubsub()
         pubsub.subscribe(channel_name)
+        return pubsub
 
-    def unsubscribe(self, channel_name: str, pubsub: PubSub) -> None:
+    def _clean_up_pubsub(self, pubsub: PubSub, channel_name: str) -> None:
         pubsub.unsubscribe(channel_name)
-
-    def pubsub_close(self, pubsub: PubSub) -> None:
         pubsub.close()
 
     async def receive_chat_message(self, websocket: WebSocketResponse, pubsub: PubSub) -> None:
@@ -81,3 +78,37 @@ class RedisService():
             self.redis_client.publish(channel=channel_name, message=pickle.dumps(message))
         except Exception:
             raise MessagePublishException("Error publishing your message to the server.")
+
+    async def handle_chat_communication(self, websocket: WebSocketResponse, channel_name: str) -> None:
+        pubsub = self._create_subscribed_pubsub(channel_name=channel_name)
+
+        try:
+            receive_task = asyncio.create_task(self.receive_chat_message(websocket=websocket, pubsub=pubsub))
+            publish_task = asyncio.create_task(self.publish_chat_message(websocket=websocket, channel_name=channel_name))
+
+            # 두 태스크 모두 ws이 close되거나 에러가 발생할 때까지 무한 루프로 실행된다
+            done, pending = await asyncio.wait(
+                [receive_task, publish_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # 둘 중 하나가 에러 혹은 ws close로 완료되면 나머지 태스크도 정리
+            for task in pending:
+                # 태스크 취소 요청 후 기다린다            
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    logging.error(f"Error during task cleanup: {task}", exc_info=True)
+                    raise
+        
+        except (ChatServiceException, WebSocketException) as e:
+            await websocket.send_json({"error": str(e)})
+
+        except Exception as e:
+            await websocket.send_json({"error": "An unexpected server error occurred."})
+
+        finally:
+            self._clean_up_pubsub(pubsub=pubsub, channel_name=channel_name)
