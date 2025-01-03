@@ -47,7 +47,7 @@ async def websocket_connect(request: Request) -> WebSocketResponse:
 
     # RedisService내에서 무한루프를 돌며 채팅 메시지 pub/sub
     redis_service: RedisService = request.app[DI_CONTAINER_NAME].redis_service
-    await redis_service.handle_chat_communication(websocket=ws, channel_name="chat")
+    await redis_service.handle_two_way_chat_communication(websocket=ws, channel_name="chat")
 
     # 연결 종료 시 active_websockets에서 제거
     request.app['active_websockets'].discard(ws)
