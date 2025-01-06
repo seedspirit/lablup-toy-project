@@ -42,6 +42,20 @@ class ServerApplication:
         logging.info("Closing Redis connection...")
         self.container.redis_client.close()
 
+        # 남은 태스크 종료
+        tasks = asyncio.all_tasks() - {asyncio.current_task()}
+        if not tasks:
+            return
+        
+        logging.info("Cancelling remain tasks...")
+        for task in tasks:
+            task.cancel()
+        
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception as e:
+            logging.error("Failed to cancel tasks: %s", e, exc_info=True)
+
     async def _register_signal_handler(self) -> None:
         loop = asyncio.get_event_loop()
         for signal in (SIGTERM, SIGINT):
